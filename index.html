@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>二分搜尋法視覺化猜數字遊戲</title>
+    <!-- 引入 Tailwind CSS 用於快速版面構建 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 引入 Font Awesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts 藝術與科技感字體 -->
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Noto+Sans+TC:wght@400;500;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            /* 套用您上傳的精美聖誕風格照片作為固定背景，疊加微量深色漸層確保文字清晰 */
+            background-image: linear-gradient(to bottom, rgba(15, 12, 25, 0.82), rgba(8, 6, 15, 0.88)), url('Screenshot_20260516_112729_Chrome.jpg');
+            background-size: cover;
+            background-position: center center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: #f3f4f6;
+        }
+        
+        .tech-font {
+            font-family: 'Share Tech Mono', monospace;
+        }
+
+        /* 數字卡片基礎樣式與過渡效果 */
+        .num-card {
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* 活耀搜尋範圍內的數字 */
+        .num-active {
+            background: rgba(59, 130, 246, 0.15);
+            border: 1px solid rgba(59, 130, 246, 0.5);
+            color: #60a5fa;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.2);
+        }
+        .num-active:hover {
+            background: rgba(59, 130, 246, 0.3);
+            transform: scale(1.1);
+            z-index: 10;
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+        }
+
+        /* 已排除的數字 */
+        .num-excluded {
+            background: rgba(31, 41, 55, 0.6);
+            border: 1px solid rgba(75, 85, 99, 0.2);
+            color: rgba(156, 163, 175, 0.2);
+            opacity: 0.25;
+            transform: scale(0.92);
+            pointer-events: none;
+        }
+        .num-excluded::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 5%;
+            width: 90%;
+            height: 1px;
+            background: rgba(156, 163, 175, 0.15);
+            transform: rotate(-15deg);
+        }
+
+        /* 使用者猜測過但非答案的數字（歷史節點） */
+        .num-guessed {
+            background: rgba(239, 68, 68, 0.25);
+            border: 1.5px solid #ef4444;
+            color: #fca5a5;
+            animation: pulse-red 2s infinite;
+        }
+
+        /* 當前推薦的 Mid（中間值）高亮 */
+        .num-recommended {
+            background: rgba(16, 185, 129, 0.25);
+            border: 2px dashed #10b981;
+            color: #34d399;
+            animation: pulse-green 1.5s infinite;
+        }
+
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 5px rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8); }
+        }
+
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 5px rgba(16, 185, 129, 0.4); transform: scale(1); }
+            50% { box-shadow: 0 0 15px rgba(16, 185, 129, 0.8); transform: scale(1.05); }
+        }
+
+        /* 掃描線特效 */
+        .scanner-line {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, #3b82f6, transparent);
+            animation: scan 4s linear infinite;
+        }
+
+        @keyframes scan {
+            0% { transform: translateY(-10px); opacity: 0; }
+            50% { opacity: 0.6; }
+            100% { transform: translateY(450px); opacity: 0; }
+        }
+
+        /* 自訂滾動條 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.5);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(59, 130, 246, 0.5);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(59, 130, 246, 0.8);
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen justify-between p-3 md:p-6 selection:bg-blue-500 selection:text-white">
+
+    <!-- 主容器 -->
+    <main class="max-w-6xl w-full mx-auto bg-slate-950/80 backdrop-blur-lg rounded-3xl border border-slate-800/80 shadow-2xl overflow-hidden flex flex-col lg:flex-row my-auto">
+        
+        <!-- 左側控制面板 (38%) -->
+        <section class="w-full lg:w-[38%] p-6 md:p-8 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800/80 relative">
+            <div class="absolute top-0 left-0 w-full overflow-hidden pointer-events-none">
+                <div class="scanner-line"></div>
+            </div>
+
+            <div>
+                <!-- 標題與標誌 -->
+                <div class="flex items-center gap-3 mb-6">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-blue-500/30">
+                        <i class="fa-solid fa-square-binary text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-xl font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-300">BINARY SEARCH</h1>
+                        <p class="text-xs text-slate-400 font-medium">二分搜尋演算法視覺化猜數遊戲</p>
+                    </div>
+                </div>
+
+                <!-- 遊戲說明區 -->
+                <div class="bg-slate-950/90 rounded-2xl p-4 border border-slate-800/60 mb-6 text-sm leading-relaxed text-slate-300">
+                    <p class="mb-2"><strong class="text-blue-400">💡 遊戲規則：</strong>系統已隨機生成了一個 <span class="text-white font-bold bg-slate-800 px-1.5 py-0.5 rounded">1 至 100</span> 的目標密碼。</p>
+                    <p>每次猜測後，系統會自動根據 <span class="text-emerald-400 font-bold">二分搜尋演算法（Binary Search）</span> 的邏輯排除不可能的數字，並以視覺化效果縮小搜尋區間，直到找出答案！</p>
+                </div>
+
+                <!-- 控制與輸入區 -->
+                <div class="space-y-4">
+                    <div>
+                        <label for="guessInput" class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 flex justify-between">
+                            <span>請輸入您的猜測數字 (1-100)</span>
+                            <span id="rangeHint" class="text-blue-400 font-semibold">目前有效：1 - 100</span>
+                        </label>
+                        <div class="relative">
+                            <i class="fa-solid fa-crosshairs absolute left-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                            <input 
+                                type="number" 
+                                id="guessInput" 
+                                min="1" 
+                                max="100" 
+                                placeholder="輸入 1 ~ 100 之間的整數" 
+                                class="w-full pl-11 pr-24 py-3.5 bg-slate-950/90 border border-slate-800 rounded-2xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-white font-semibold transition-all text-lg placeholder:text-slate-600 tech-font"
+                            >
+                            <button 
+                                id="guessBtn"
+                                onclick="makeGuess()"
+                                class="absolute right-2 top-2 bottom-2 px-5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl font-bold text-sm transition-all active:scale-95 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 flex items-center gap-1.5"
+                            >
+                                <span>猜測</span>
+                                <i class="fa-solid fa-paper-plane text-xs"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 二分法推薦提示 -->
+                    <div id="algoSuggestion" class="bg-emerald-950/30 border border-emerald-900/50 rounded-2xl p-4 flex items-start gap-3 transition-all duration-300">
+                        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-400 flex-shrink-0 mt-0.5">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        </div>
+                        <div class="text-xs">
+                            <h4 class="font-bold text-emerald-400 mb-0.5">演算法精準提示 (當前 Mid)</h4>
+                            <p class="text-slate-400 leading-normal">此時最佳解為猜測中間值 <span id="suggestedMid" class="text-emerald-300 font-bold underline tech-font text-sm">50</span>。這可保證無論結果如何，都能一次淘汰剩餘近半的數字！</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 下方狀態統計欄 -->
+            <div class="mt-8 border-t border-slate-800/80 pt-6 space-y-4">
+                <div class="grid grid-cols-2 gap-3 text-center">
+                    <div class="bg-slate-950/85 p-3 rounded-xl border border-slate-800/50">
+                        <span class="block text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">已猜次數</span>
+                        <span id="guessCount" class="text-2xl font-black text-white tech-font">0</span>
+                    </div>
+                    <div class="bg-slate-950/85 p-3 rounded-xl border border-slate-800/50">
+                        <span class="block text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">剩餘可能數</span>
+                        <span id="possibleCount" class="text-2xl font-black text-blue-400 tech-font">100</span>
+                    </div>
+                </div>
+
+                <!-- 搜尋進度條 -->
+                <div>
+                    <div class="flex justify-between text-xs text-slate-500 font-semibold mb-1.5">
+                        <span>排除進度</span>
+                        <span id="progressPercent" class="tech-font text-blue-400">0%</span>
+                    </div>
+                    <div class="w-full bg-slate-950 rounded-full h-2 overflow-hidden border border-slate-800">
+                        <div id="progressBar" class="bg-gradient-to-r from-blue-600 to-indigo-500 h-full w-0 transition-all duration-500 ease-out"></div>
+                    </div>
+                </div>
+
+                <!-- 狀態回饋跑馬燈/文字 -->
+                <div id="feedbackBox" class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-center min-h-[50px] flex items-center justify-center transition-all duration-300">
+                    <span id="feedbackText" class="text-slate-400 font-medium text-sm">請輸入數字並按下猜測，開始遊戲！</span>
+                </div>
+
+                <!-- 重置按鈕 -->
+                <button 
+                    onclick="initGame()"
+                    class="w-full py-2.5 bg-slate-800/50 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl font-bold text-xs transition-all border border-slate-700/50 hover:border-slate-600 flex items-center justify-center gap-2 active:scale-98"
+                >
+                    <i class="fa-solid fa-arrow-rotate-left"></i>
+                    <span>重新生成秘密數字</span>
+                </button>
+            </div>
+        </section>
+
+        <!-- 右側數字網格視覺化面板 (62%) -->
+        <section class="w-full lg:w-[62%] p-6 md:p-8 flex flex-col justify-between bg-slate-950/50 backdrop-blur-md">
+            <div>
+                <!-- 網格頂部狀態列 -->
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"></span>
+                        <h2 class="text-sm font-bold text-slate-300">1 - 100 搜尋空間視覺網格</h2>
+                    </div>
+                    <!-- 圖例說明 -->
+                    <div class="flex items-center gap-4 text-[10px] md:text-xs text-slate-400 font-medium">
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded bg-blue-500/20 border border-blue-500/60 block"></span>
+                            <span>可能範圍</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded bg-emerald-500/20 border border-emerald-500 dashed border-2 block"></span>
+                            <span>推薦 Mid</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded bg-red-500/20 border border-red-500 block"></span>
+                            <span>不符猜測</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded bg-gray-800/60 border border-gray-700/20 opacity-40 block"></span>
+                            <span>已排除</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 100個數字網格容器 -->
+                <div id="numberGrid" class="grid grid-cols-10 gap-1.5 md:gap-2 select-none">
+                    <!-- 數字將由 JavaScript 動態渲染 -->
+                </div>
+            </div>
+
+            <!-- 底部演算法資訊看板 -->
+            <div class="mt-8 bg-slate-900/70 border border-slate-800/60 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <div class="text-3xl text-indigo-400">
+                        <i class="fa-brands fa-square-js"></i>
+                    </div>
+                    <div>
+                        <h4 class="text-xs font-bold text-slate-300">演算法決策樹狀態</h4>
+                        <p class="text-[11px] text-slate-500 mt-0.5">目前演算法搜尋區間與變數指標：</p>
+                    </div>
+                </div>
+                <!-- 演算法指標顯示 -->
+                <div class="flex items-center gap-2 text-xs font-semibold tech-font">
+                    <div class="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-center">
+                        <span class="text-[9px] text-slate-500 block">LOW</span>
+                        <span id="labelLow" class="text-blue-400 text-sm">1</span>
+                    </div>
+                    <div class="text-slate-600 font-bold">➔</div>
+                    <div class="bg-slate-950 px-3 py-1.5 rounded-lg border border-emerald-900 text-center">
+                        <span class="text-[9px] text-slate-500 block">MID (估計)</span>
+                        <span id="labelMid" class="text-emerald-400 text-sm">50</span>
+                    </div>
+                    <div class="text-slate-600 font-bold">➔</div>
+                    <div class="bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 text-center">
+                        <span class="text-[9px] text-slate-500 block">HIGH</span>
+                        <span id="labelHigh" class="text-red-400 text-sm">100</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- 版權與附註 -->
+    <footer class="text-center text-xs text-slate-300 mt-6 font-medium bg-slate-950/75 py-2 px-5 rounded-full max-w-fit mx-auto backdrop-blur-md border border-slate-800/80">
+        <p>二分搜尋法（Binary Search）時間複雜度為 $O(\log n)$，在 100 個數字中最多只需 7 次猜測必能找到答案。</p>
+    </footer>
+
+    <!-- 自訂祝賀彈窗 (Modal) -->
+    <div id="congratsModal" class="fixed inset-0 bg-slate-950/90 backdrop-blur-md z-50 flex items-center justify-center p-4 hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-8 max-w-md w-full text-center shadow-2xl relative overflow-hidden transform scale-90 transition-transform duration-300">
+            <!-- 閃爍背景裝飾 -->
+            <div class="absolute -top-12 -left-12 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl"></div>
+            <div class="absolute -bottom-12 -right-12 w-32 h-32 bg-emerald-500/10 rounded-full blur-2xl"></div>
+
+            <!-- 獎盃 -->
+            <div class="w-20 h-20 rounded-2xl bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 mx-auto mb-6 animate-bounce">
+                <i class="fa-solid fa-trophy text-4xl"></i>
+            </div>
+
+            <h2 class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-100 mb-2">Bingo! You Got It!</h2>
+            <p class="text-slate-400 text-sm mb-6">您展現了卓越的邏輯思維，成功解鎖密碼！</p>
+
+            <!-- 數據統計 -->
+            <div class="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 mb-6 space-y-3.5">
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-slate-400">解密目標數字</span>
+                    <span id="modalTarget" class="text-white font-bold tech-font text-lg text-emerald-400">--</span>
+                </div>
+                <hr class="border-slate-800">
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-slate-400">您總共嘗試了</span>
+                    <span id="modalGuesses" class="text-white font-bold tech-font text-lg text-blue-400">-- 次</span>
+                </div>
+                <hr class="border-slate-800">
+                <div class="flex justify-between items-center text-sm">
+                    <span class="text-slate-400">二分法評估效率</span>
+                    <span id="modalEfficiency" class="text-white font-bold text-xs px-2.5 py-1 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20">完美發揮</span>
+                </div>
+            </div>
+
+            <!-- 按鈕 -->
+            <button 
+                onclick="closeModalAndRestart()"
+                class="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-2xl font-bold text-sm shadow-lg shadow-blue-500/25 transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+                <i class="fa-solid fa-rotate-right"></i>
+                <span>再玩一次，挑戰極限</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- JavaScript 邏輯控制 -->
+    <script>
+        // 核心遊戲狀態變數
+        let secretNumber;       // 後台生成的隨機目標數字
+        let low;                // 當前搜尋範圍的下限
+        let high;               // 當前搜尋範圍的上限
+        let guessCount;         // 已猜測次數
+        let guessedHistory;     // 歷史猜測紀錄陣列
+
+        // DOM 元素快取
+        const guessInput = document.getElementById('guessInput');
+        const guessBtn = document.getElementById('guessBtn');
+        const numberGrid = document.getElementById('numberGrid');
+        const feedbackText = document.getElementById('feedbackText');
+        const feedbackBox = document.getElementById('feedbackBox');
+        const rangeHint = document.getElementById('rangeHint');
+        const uiGuessCount = document.getElementById('guessCount');
+        const uiPossibleCount = document.getElementById('possibleCount');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        
+        // 演算法變數指標 DOM
+        const labelLow = document.getElementById('labelLow');
+        const labelMid = document.getElementById('labelMid');
+        const labelHigh = document.getElementById('labelHigh');
+        const suggestedMid = document.getElementById('suggestedMid');
+        const algoSuggestion = document.getElementById('algoSuggestion');
+
+        // 彈窗 DOM
+        const congratsModal = document.getElementById('congratsModal');
+        const modalTarget = document.getElementById('modalTarget');
+        const modalGuesses = document.getElementById('modalGuesses');
+        const modalEfficiency = document.getElementById('modalEfficiency');
+
+        // 監聽鍵盤 Enter 事件
+        guessInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                makeGuess();
+            }
+        });
+
+        /**
+         * 初始化/重新開始遊戲
+         */
+        function initGame() {
+            // 1. 初始化數值
+            secretNumber = Math.floor(Math.random() * 100) + 1;
+            low = 1;
+            high = 100;
+            guessCount = 0;
+            guessedHistory = [];
+
+            // 2. 清空輸入框
+            guessInput.value = '';
+            guessInput.disabled = false;
+            guessBtn.disabled = false;
+
+            // 3. 重置回饋 UI 樣式與文字
+            feedbackText.innerText = "請輸入數字並按下猜測，開始遊戲！";
+            feedbackText.className = "text-slate-400 font-medium text-sm";
+            feedbackBox.className = "bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-center min-h-[50px] flex items-center justify-center transition-all duration-300";
+
+            // 4. 重建 1-100 的數字網格
+            buildNumberGrid();
+
+            // 5. 更新所有統計狀態與指示器
+            updateUI();
+        }
+
+        /**
+         * 建立 100 個數字卡片的網格 DOM
+         */
+        function buildNumberGrid() {
+            numberGrid.innerHTML = '';
+            for (let i = 1; i <= 100; i++) {
+                const card = document.createElement('div');
+                card.id = `num-${i}`;
+                card.innerText = i;
+                card.className = "num-card num-active rounded-xl h-10 md:h-11 flex items-center justify-center font-bold text-xs md:text-sm cursor-pointer tech-font";
+                
+                // 點擊網格數字即可快速填入輸入框並觸發猜測
+                card.onclick = () => {
+                    if (i >= low && i <= high && !guessedHistory.includes(i)) {
+                        guessInput.value = i;
+                        makeGuess();
+                    }
+                };
+                
+                numberGrid.appendChild(card);
+            }
+        }
+
+        /**
+         * 執行猜測邏輯
+         */
+        function makeGuess() {
+            const val = parseInt(guessInput.value);
+
+            // 防呆與驗證
+            if (isNaN(val) || val < 1 || val > 100) {
+                showFeedback("⚠️ 請輸入介於 1 到 100 之間的有效整數！", "warning");
+                return;
+            }
+
+            if (val < low || val > high) {
+                showFeedback(`⚠️ 該數字不在目前可行區間 [${low} - ${high}] 內！`, "warning");
+                return;
+            }
+
+            if (guessedHistory.includes(val)) {
+                showFeedback("⚠️ 您之前已經猜過這個數字了！", "warning");
+                return;
+            }
+
+            // 正式記錄此猜測
+            guessCount++;
+            guessedHistory.push(val);
+            guessInput.value = ''; // 清空
+
+            // 判斷勝負與調整邊界
+            if (val === secretNumber) {
+                // 猜中答案！
+                updateVisuals(val, "correct");
+                showFeedback(`🎉 恭喜！答對了！答案就是 ${secretNumber}！`, "success");
+                triggerVictory(val);
+            } else if (val < secretNumber) {
+                // 猜太小 -> 縮限下限 low
+                low = val + 1;
+                updateVisuals(val, "too-small");
+                showFeedback(`📈 太小了！答案在 ${val} 到 ${high} 之間。`, "info");
+            } else {
+                // 猜太大 -> 縮限上限 high
+                high = val - 1;
+                updateVisuals(val, "too-large");
+                showFeedback(`📉 太大了！答案在 ${low} 到 ${val} 之間。`, "info");
+            }
+
+            // 更新 UI 與決策指標
+            updateUI();
+        }
+
+        /**
+         * 依據目前 [low, high] 及歷史，更新網格中 100 個數字的 CSS Class 狀態
+         */
+        function updateVisuals(lastGuess, guessResult) {
+            const mid = Math.floor((low + high) / 2);
+
+            for (let i = 1; i <= 100; i++) {
+                const card = document.getElementById(`num-${i}`);
+                if (!card) continue;
+
+                // 移除所有狀態類名
+                card.className = "num-card rounded-xl h-10 md:h-11 flex items-center justify-center font-bold text-xs md:text-sm cursor-pointer tech-font";
+
+                if (guessedHistory.includes(i)) {
+                    // 若是猜測過的歷史錯誤點
+                    card.classList.add("num-guessed");
+                } else if (i < low || i > high) {
+                    // 超出當前搜尋範圍（被排除的數字）
+                    card.classList.add("num-excluded");
+                } else if (i === mid && low <= high) {
+                    // 當前推薦的 Mid（中間值）
+                    card.classList.add("num-recommended");
+                } else {
+                    // 在搜尋範圍內、未猜過的可行數字
+                    card.classList.add("num-active");
+                }
+            }
+        }
+
+        /**
+         * 更新網頁上的文字、進度條、及演算法數據看板
+         */
+        function updateUI() {
+            // 計算推薦的 Mid 中間值
+            const mid = Math.floor((low + high) / 2);
+            
+            // 1. 文字看板更新
+            rangeHint.innerText = `目前有效：${low} - ${high}`;
+            uiGuessCount.innerText = guessCount;
+            
+            // 2. 計算可行數字個數
+            const possibleCount = Math.max(0, high - low + 1);
+            uiPossibleCount.innerText = possibleCount;
+
+            // 3. 進度條（排除比例百分比）
+            const excludedCount = 100 - possibleCount;
+            progressBar.style.width = `${excludedCount}%`;
+            progressPercent.innerText = `${excludedCount}%`;
+
+            // 4. 演算法看板
+            labelLow.innerText = low;
+            labelHigh.innerText = high;
+            labelMid.innerText = (low <= high) ? mid : '--';
+            
+            // 5. 提示提示區
+            if (low <= high && possibleCount > 1) {
+                algoSuggestion.classList.remove("opacity-0", "pointer-events-none");
+                suggestedMid.innerText = mid;
+            } else {
+                algoSuggestion.classList.add("opacity-0", "pointer-events-none");
+            }
+        }
+
+        /**
+         * 顯示精美自訂狀態回饋
+         */
+        function showFeedback(text, type) {
+            feedbackText.innerText = text;
+            
+            // 基礎 Class
+            const baseClass = "rounded-xl p-3.5 text-center min-h-[50px] flex items-center justify-center transition-all duration-300 font-bold text-sm w-full";
+            
+            if (type === "success") {
+                feedbackBox.className = `${baseClass} bg-emerald-950/50 border border-emerald-500 text-emerald-400`;
+            } else if (type === "info") {
+                feedbackBox.className = `${baseClass} bg-blue-950/50 border border-blue-500 text-blue-300`;
+            } else if (type === "warning") {
+                feedbackBox.className = `${baseClass} bg-amber-950/50 border border-amber-600 text-amber-300`;
+                // 震動警告效果
+                feedbackBox.classList.add("animate-bounce");
+                setTimeout(() => feedbackBox.classList.remove("animate-bounce"), 500);
+            } else {
+                feedbackBox.className = `${baseClass} bg-slate-950 border border-slate-800 text-slate-400`;
+            }
+        }
+
+        /**
+         * 觸發答對時的賀喜 Modal
+         */
+        function triggerVictory(ans) {
+            // 停止輸入與操作
+            guessInput.disabled = true;
+            guessBtn.disabled = true;
+
+            // 寫入 Modal 統計
+            modalTarget.innerText = ans;
+            modalGuesses.innerText = `${guessCount} 次`;
+
+            // 效率評估文字 (100個數字中二分法最差為 7 次)
+            if (guessCount === 1) {
+                modalEfficiency.innerText = "神之直覺！(1次猜中)";
+                modalEfficiency.className = "px-2.5 py-1 bg-purple-500/20 text-purple-300 rounded-full border border-purple-500/30 text-xs font-semibold";
+            } else if (guessCount <= 4) {
+                modalEfficiency.innerText = "極致高超！(優於二分法預期)";
+                modalEfficiency.className = "px-2.5 py-1 bg-amber-500/20 text-amber-300 rounded-full border border-amber-500/30 text-xs font-semibold";
+            } else if (guessCount <= 7) {
+                modalEfficiency.innerText = "完美二分搜尋法邏輯！(100% 正確決策)";
+                modalEfficiency.className = "px-2.5 py-1 bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30 text-xs font-semibold";
+            } else {
+                modalEfficiency.innerText = "正常發揮 (但有重複或非最優猜測)";
+                modalEfficiency.className = "px-2.5 py-1 bg-blue-500/20 text-blue-300 rounded-full border border-blue-500/30 text-xs font-semibold";
+            }
+
+            // 動態淡入顯示彈窗
+            congratsModal.classList.remove('hidden');
+            setTimeout(() => {
+                congratsModal.classList.remove('opacity-0');
+                congratsModal.querySelector('.transform').classList.remove('scale-90');
+                congratsModal.querySelector('.transform').classList.add('scale-100');
+            }, 50);
+        }
+
+        /**
+         * 關閉 Modal 並重新開始遊戲
+         */
+        function closeModalAndRestart() {
+            // 先淡出 Modal
+            congratsModal.classList.add('opacity-0');
+            congratsModal.querySelector('.transform').classList.add('scale-90');
+            congratsModal.querySelector('.transform').classList.remove('scale-100');
+            
+            setTimeout(() => {
+                congratsModal.classList.add('hidden');
+                // 初始化遊戲
+                initGame();
+            }, 300);
+        }
+
+        // 當網頁載入時啟動
+        window.onload = function() {
+            initGame();
+        }
+    </script>
+</body>
+</html>
